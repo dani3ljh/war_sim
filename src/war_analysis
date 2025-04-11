@@ -1,0 +1,46 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+# Load the CSV file
+script_dir = Path(__file__).resolve().parent
+csv_path = script_dir.parent / "src/results.csv"
+df = pd.read_csv(csv_path)
+
+# Histogram of turn counts
+plt.figure(figsize=(10, 6))
+plt.hist(df["turns"], bins=50, color='skyblue', edgecolor='black')
+plt.title("Distribution of Game Lengths (Turns)")
+plt.xlabel("Turns")
+plt.ylabel("Number of Games")
+plt.grid(True, linestyle="--", alpha=0.6)
+
+# Set x-axis ticks to go by 50s, and label every 100th tick
+xticks = range(0, int(df["turns"].max()) + 1, 50)
+xlabels = [str(tick) if tick % 100 == 0 else "" for tick in xticks]
+plt.xticks(xticks, xlabels)
+
+# Set y-axis ticks to go by 100s, label every 200
+max_y = plt.gca().get_ylim()[1]
+yticks = range(0, int(max_y) + 100, 100)
+ylabels = [str(tick) if tick % 200 == 0 else "" for tick in yticks]
+plt.yticks(yticks, ylabels)
+
+# Remove the extra space to the right by setting the xlim to the range of the data
+plt.xlim(left=0, right=int(df["turns"].max()) + 50)  # Extend a bit to the right to avoid cutting off the last bin
+
+plt.tight_layout()
+plt.savefig("turn_distribution.png")
+plt.show()
+
+# Pie chart of winner counts
+winner_counts = df["winner"].value_counts()
+labels = winner_counts.index
+sizes = winner_counts.values
+
+plt.figure(figsize=(6, 6))
+plt.pie(sizes, labels=labels, autopct="%1.1f%%", colors=["lightgreen", "lightcoral"])
+plt.title("Player Win Ratio")
+plt.tight_layout()
+plt.savefig("win_ratio_pie.png")
+plt.show()

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use std::fmt;
 use rand::rngs::ThreadRng;
 use rand::prelude::SliceRandom;
@@ -6,10 +8,20 @@ use strum_macros::EnumIter;
 
 fn main() {
     let mut rng = rand::rng();
-    // Start War Sim
-    let game = war_sim(&mut rng);
-    
-    println!("The game lasted {} turns resulting in {} winning", game.turns, game.winner);
+
+    // Make csv output file
+    let mut file = File::create("results.csv").expect("Unable to create file");
+    writeln!(file, "turns,winner").expect("Unable to write header");
+
+    println!("Starting Simulations");
+
+    // Run 10,000 simulations
+    for _ in 0..10_000 {
+        let data = war_sim(&mut rng);
+        writeln!(file, "{},{}", data.turns, data.winner).expect("Unable to write data");
+    }
+
+    println!("Simulations Complete")
 }
 
 fn war_sim(rng: &mut ThreadRng) -> GameData {
