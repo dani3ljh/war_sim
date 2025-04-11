@@ -18,17 +18,7 @@ fn war_sim(rng: &mut ThreadRng) -> GameData {
     deck.shuffle(rng);
     
     // Last element represents top
-    let mut player_1 = Vec::with_capacity(52);
-    let mut player_2 = Vec::with_capacity(52);
-
-    // Deal Cards
-    for (i, card) in deck.iter().enumerate() {
-        if i % 2 == 0 {
-            player_1.push(*card);
-        } else {
-            player_2.push(*card);
-        }
-    }
+    let (mut player_1, mut player_2) = deal_cards(&deck);
 
     // Offhands represent the pile of cards you earn
     let mut offhand_1 = Vec::with_capacity(52);
@@ -37,48 +27,114 @@ fn war_sim(rng: &mut ThreadRng) -> GameData {
 
     loop {
         turns += 1;
-        let mut pile = Vec::new();
-
-        loop {
-            let option_card_1 = get_card(&mut player_1, &mut offhand_1, rng);
-            if option_card_1.is_none() {
-                return GameData { winner: Player::Player2, turns };
-            }
-            let card_1 = option_card_1.unwrap();
-            pile.push(card_1);
-
-            let option_card_2 = get_card(&mut player_2, &mut offhand_2, rng);
-            if option_card_2.is_none() {
-                return GameData { winner: Player::Player1, turns };
-            }
-            let card_2 = option_card_2.unwrap();
-            pile.push(card_2);
-
-            if card_1 > card_2 {
+        
+        match play_turn(&mut player_1, &mut offhand_1, &mut player_2, &mut offhand_2, rng) {
+            TurnOutcome::Winner(winner) => return GameData { winner, turns },
+            TurnOutcome::PileAwarded(Player::Player1, mut pile) => {
                 offhand_1.append(&mut pile);
-                break;
-            }
-
-            if card_1 < card_2 {
+            },
+            TurnOutcome::PileAwarded(Player::Player2, mut pile) => {
                 offhand_2.append(&mut pile);
-                break;
-            }
-
-            for _ in 0..3 {
-                let option_card_1 = get_card(&mut player_1, &mut offhand_1, rng);
-                if option_card_1.is_none() {
-                    return GameData { winner: Player::Player2, turns };
-                }
-                pile.push(option_card_1.unwrap());
-
-                let option_card_2 = get_card(&mut player_2, &mut offhand_2, rng);
-                if option_card_2.is_none() {
-                    return GameData { winner: Player::Player1, turns };
-                }
-                pile.push(option_card_2.unwrap());
             }
         }
     }
+}
+
+fn deal_cards(deck: &Vec<CardValue>) -> (Vec<CardValue>, Vec<CardValue>) {
+    let mut player_1 = Vec::with_capacity(52);
+    let mut player_2 = Vec::with_capacity(52);
+
+    // Passes deck evenly between players going back and forth
+    for (i, &card) in deck.iter().enumerate() {
+        if i % 2 == 0 {
+            player_1.push(card);
+        } else {
+            player_2.push(card);
+        }
+    }
+
+    (player_1, player_2)
+}
+
+enum TurnOutcome {
+    Winner(Player), // Winner of the entire game
+    PileAwarded(Player, Vec<CardValue>), // Holds the player who should recieve the pile, and the pile itself
+}
+
+fn play_turn(player_1: &mut Vec<CardValue>, offhand_1: &mut Vec<CardValue>, player_2: &mut Vec<CardValue>, offhand_2: &mut Vec<CardValue>, rng: &mut ThreadRng) -> TurnOutcome {
+    let mut pile = Vec::new();
+
+    loop {
+        let card_1 = match get_card(player_1, offhand_1, rng) {
+            Some(card) => card,
+            None => return TurnOutcome::Winner(Player::Player2),
+        };
+        pile.push(card_1);
+
+        let card_2 = match get_card(player_2, offhand_2, rng) {
+            Some(card) => card,
+            None => return TurnOutcome::Winner(Player::Player1),
+        };
+        pile.push(card_2);
+
+        // If the card is higher the placer gets both cards
+        if card_1 > card_2 {
+            return TurnOutcome::PileAwarded(Player::Player1, pile);
+        }
+
+        if card_2 > card_1 {
+            return TurnOutcome::PileAwarded(Player::Player2, pile);
+        }
+
+        if let Some(winner) = resolve_war(player_1, offhand_1, player_2, offhand_2, rng, &mut pile) {
+            return TurnOutcome::Winner(winner);
+        }
+    }
+}
+
+fn resolve_war(player_1: &mut Vec<CardValue>, offhand_1: &mut Vec<CardValue>, player_2: &mut Vec<CardValue>, offhand_2: &mut Vec<CardValue>, rng: &mut ThreadRng, pile: &mut Vec<CardValue>) -> Option<Player> {
+    // Place 3 cards if you run out you lose
+    for _ in 0..3 {
+        let card_1 = match get_card(player_1, offhand_1, rng) {
+            Some(card) => card,
+            None => return Some(Player::Player2),
+        };
+        pile.push(card_1);
+
+        let card_2 = match get_card(player_2, offhand_2, rng) {
+            Some(card) => card,
+            None => return Some(Player::Player1),
+        };
+        pile.push(card_2);
+    }
+    None
+}
+
+fn get_card(hand: &mut Vec<CardValue>, mut offhand: &mut Vec<CardValue>, rng: &mut ThreadRng) -> Option<CardValue> {
+    // Gets card, if none then shuffle offhand into hand
+    let mut option_card = hand.pop();
+    if option_card.is_none() {
+        if offhand.is_empty() {
+            return None;
+        } else {
+            hand.append(&mut offhand);
+            hand.shuffle(rng);
+            option_card = hand.pop();
+        }
+    }
+    option_card
+}
+
+fn full_deck() -> Vec<CardValue> {
+    let mut deck = Vec::with_capacity(52);
+
+    for value in CardValue::iter() {
+        for _ in 0..4 {
+            deck.push(value);
+        }
+    }
+
+    deck
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,32 +168,6 @@ impl Ord for GameData {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.turns.cmp(&other.turns)
     }
-}
-
-fn get_card(hand: &mut Vec<CardValue>, mut offhand: &mut Vec<CardValue>, rng: &mut ThreadRng) -> Option<CardValue> {
-    let mut option_card = hand.pop();
-    if option_card.is_none() {
-        if offhand.is_empty() {
-            return None;
-        } else {
-            hand.append(&mut offhand);
-            hand.shuffle(rng);
-            option_card = hand.pop();
-        }
-    }
-    option_card
-}
-
-fn full_deck() -> Vec<CardValue> {
-    let mut deck = Vec::with_capacity(52);
-
-    for value in CardValue::iter() {
-        for _ in 0..4 {
-            deck.push(value);
-        }
-    }
-
-    deck
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter)]
